@@ -1,0 +1,98 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Smart Soldering Station - Global IoT Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Include MQTT.js library from CDN -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #ffffff; text-align: center; padding: 20px; }
+    h2 { color: #00d2ff; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 600px; margin: 0 auto; }
+    .card { background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); margin-bottom: 20px; }
+    .val { font-size: 2.5rem; font-weight: bold; margin-top: 10px; }
+    .danger { color: #ff4c4c; }
+    .safe { color: #00e676; }
+    .idle { color: #a0a0a0; }
+    .active { color: #ffca28; }
+    #debug { background: #000; color: #00ff00; padding: 10px; font-family: monospace; font-size: 0.9rem; border-radius: 6px; max-width: 600px; margin: 0 auto; text-align: left; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h2>Soldering Station (Cloud Live)</h2>
+  <div class="grid">
+    <div class="card">
+      <div>Iron Temp (&deg;C)</div>
+      <div id="temp" class="val">--</div>
+    </div>
+    <div class="card">
+      <div>Air Quality</div>
+      <div id="fumes" class="val">--</div>
+    </div>
+    <div class="card">
+      <div>Dock Status</div>
+      <div id="dock" class="val">--</div>
+    </div>
+    <div class="card">
+      <div>Motion Status</div>
+      <div id="motion" class="val">--</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div>Live Cloud MQTT Log:</div>
+    <div id="debug">Connecting to HiveMQ cloud broker...</div>
+  </div>
+
+  <script>
+    // Connect to HiveMQ public broker via Secure WebSockets (wss)
+    const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
+    const topic = 'smart_soldering_station/telemetry';
+
+    const client = mqtt.connect(brokerUrl);
+
+    client.on('connect', function () {
+      document.getElementById('debug').innerText = 'Connected to Cloud! Subscribing to topic...';
+      client.subscribe(topic, function (err) {
+        if (!err) {
+          document.getElementById('debug').innerText = 'Listening for live telemetry...';
+        }
+      });
+    });
+
+    client.on('message', function (mqttTopic, payload) {
+      try {
+        let raw = payload.toString().trim();
+        document.getElementById('debug').innerText = "RAW MQTT: " + raw;
+
+        var data = JSON.parse(raw);
+        
+        // Restore decimal point (e.g., 310 -> 31.0)
+        let actualTemp = "--";
+        if (data.t !== undefined && !isNaN(data.t)) {
+          actualTemp = (data.t / 10).toFixed(1);
+        }
+        
+        let tempEl = document.getElementById('temp');
+        tempEl.innerHTML = actualTemp + "&deg;C";
+        tempEl.className = actualTemp > 40 ? "val danger" : "val safe";
+
+        let fumeEl = document.getElementById('fumes');
+        fumeEl.innerHTML = data.f ? "FUMES DETECTED" : "CLEAR";
+        fumeEl.className = data.f ? "val danger" : "val safe";
+
+        let dockEl = document.getElementById('dock');
+        dockEl.innerHTML = data.d ? "DOCKED" : "UNDOCKED";
+        dockEl.className = data.d ? "val safe" : "val active";
+
+        let motionEl = document.getElementById('motion');
+        motionEl.innerHTML = data.m ? "MOVING" : "IDLE";
+        motionEl.className = data.m ? "val active" : "val idle";
+        
+      } catch (err) {
+        document.getElementById('debug').innerText = "Parse Error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
